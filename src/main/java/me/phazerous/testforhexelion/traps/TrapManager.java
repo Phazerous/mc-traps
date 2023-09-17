@@ -1,50 +1,73 @@
 package me.phazerous.testforhexelion.traps;
 
+import me.phazerous.testforhexelion.traps.traps.TrapWithEffects;
 import me.phazerous.testforhexelion.utils.LocationUtils;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
-import org.bukkit.potion.PotionEffect;
-import org.bukkit.potion.PotionEffectType;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
+import java.util.*;
 
-public class TrapsManager {
+public class TrapManager {
 
-    private final List<Location> trapsLocation = new ArrayList<>();
-    private final HashMap<String, Location> traps = new HashMap<>();
+    private final List<TrapWithEffects> traps = new ArrayList<>();
 
-    public void registerTrap(String id) {
-        traps.put(id, null);
+    public void registerTrap(TrapWithEffects trap) {
+        traps.add(trap);
     }
 
-    public void placeTrap(Location location) {
-        Location trapLocation = LocationUtils.getIntegerLocation(location);
-        trapsLocation.add(trapLocation);
+    public boolean placeTrap(String id, Location location) {
+        Optional<TrapWithEffects> abstractTrap = traps.stream().filter(trap -> trap.getId().equalsIgnoreCase(id))
+                .findFirst();
+
+        if (!abstractTrap.isPresent()) return false;
+
+        Location integerLocation = LocationUtils.getIntegerLocation(location);
+        abstractTrap.get().setLocation(integerLocation);
+
+        return true;
     }
 
-    public boolean isTrapLocation(Location location) {
-        Location trapLocation = LocationUtils.getIntegerLocation(location);
-        return LocationUtils.listContainsLocation(trapLocation, trapsLocation);
+    private TrapWithEffects getTrapById(String id) {
+        Optional<TrapWithEffects> abstractTrap = traps.stream().filter(trap -> trap.getId().equalsIgnoreCase(id))
+                .findFirst();
+
+        return abstractTrap.orElse(null);
     }
 
-    public void handleTrapActivation(Location trapLocation, Player player) {
-        LocationUtils.removeLocationFromList(trapLocation, trapsLocation);
+    public String getTrapIdByLocation(Location location) {
+        Location intergerLocation = LocationUtils.getIntegerLocation(location);
 
-        Material trapMaterial = Material.GLASS;
-        int secondsUntilRespawn = 3;
+        Optional<TrapWithEffects> abstractTrap = traps.stream().filter(trap -> {
+            Location trapLocation = trap.getLocation();
 
-        player.addPotionEffect(new PotionEffect(PotionEffectType.SLOW, 20 * secondsUntilRespawn, 1));
+            if (trapLocation == null) return false;
+            return LocationUtils.isSameLocation(trap.getLocation(), intergerLocation);
+        }).findFirst();
 
-        surroundAreaWithBlocks(player.getLocation(), trapMaterial, secondsUntilRespawn);
+        return abstractTrap.map(TrapWithEffects::getId).orElse(null);
     }
 
-    public void surroundAreaWithBlocks(Location location, Material blockMaterial, int secondsUntilRespawn) {
-        boolean[][] pattern = getAreaPattern();
+    public boolean handleTrapActivation(String trapId, Player player) {
+        TrapWithEffects trap = getTrapById(trapId);
+
+        if (trap == null) return false;
+
+        player.addPotionEffect(trap.getEffect());
+        surroundAreaWithBlocks(trap);
+
+        traps.removeIf(it -> it.getId().equalsIgnoreCase(trap.getId()));
+        return true;
+    }
+
+    public void surroundAreaWithBlocks(TrapWithEffects trap) {
+        Location location = trap.getLocation();
+        Material blockMaterial = trap.getSurfaceMaterial();
+        int duration = trap.getDuration();
+
+        boolean[][] pattern = trap.getSurfacePattern();
         int patternXLength = pattern[0].length;
         int patternZLength = pattern.length;
 
@@ -53,29 +76,17 @@ public class TrapsManager {
 
         for (int z = 0; z < patternZLength; z++) {
             for (int x = 0; x < patternXLength; x++) {
-                Block block = location.getWorld().getBlockAt(startX + x, location.getBlockY(), startZ + z);
+                Block block = location.getWorld().getBlockAt(startX + x, location.getBlockY() - 1, startZ + z);
                 Material previousBlockMaterial = block.getType();
 
                 if (pattern[z][x]) {
                     block.setType(blockMaterial);
+                    //COULD BE OPTIMIZED BY USING A SINGLE TASK
                     Bukkit.getScheduler().runTaskLater(Bukkit.getPluginManager().getPlugin("TestForHexelion"), () -> {
                         block.setType(previousBlockMaterial);
-                    }, secondsUntilRespawn * 20);
+                    }, duration);
                 }
             }
         }
-    }
-
-    private boolean[][] getAreaPattern() {
-        // --> X
-        // |
-        // V Z
-        return new boolean[][] {
-                {false, true, true, true, false},
-                {true, true, true, true, true},
-                {true, true, true, true, true},
-                {true, true, true, true, true},
-                {false, true, true, true, false}
-        };
     }
 }

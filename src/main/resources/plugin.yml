@@ -2,3 +2,7 @@ name: TestForHexelion
 version: '${project.version}'
 main: me.phazerous.testforhexelion.TestForHexelion
 api-version: '1.20'
+commands:
+  createtrap:
+    description: Creates a trap
+    usage: /<command> <trapname>
